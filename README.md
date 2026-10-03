@@ -2,6 +2,10 @@
 
 A real-time, AI-powered microphone listener that tracks specific "buzzwords" (like AI, Machine Learning, etc.) during a presentation and increments retro, analog-style rolling odometers on a web dashboard.
 
+<div align="center">
+  <img src="screenshot.png" alt="Presentation Mode UI" width="800">
+</div>
+
 Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (English & German) speech recognition!
 
 ## ✨ Features
