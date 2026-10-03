@@ -56,72 +56,86 @@ def notify_clients(data):
             except queue.Full:
                 pass
 
+# Device management globals
+current_device_index = None
+device_changed = False
+
 def audio_listener():
+    global current_device_index, device_changed
     """Listens to microphone in the background and queues updates."""
     recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("🎙️  Calibrating microphone for ambient noise... Please stay quiet for a few seconds.")
-        recognizer.adjust_for_ambient_noise(source, duration=3)
-        # Bump the threshold slightly to completely ignore background hums and static
-        recognizer.energy_threshold += 150
-        # Disable dynamic adjustment so the library doesn't slowly erode our safety buffer back down to 0 over time
-        recognizer.dynamic_energy_threshold = False
-        print("✅ Calibration complete! Listening for buzzwords...")
+    
+    if FASTER_WHISPER_AVAILABLE:
+        print("⚡ Using Faster-Whisper engine for ultra-fast transcription!")
+        faster_model = WhisperModel("small", device="auto", compute_type="default")
+    else:
+        print("🐢 Using standard OpenAI Whisper engine. (Run 'pip install faster-whisper' to upgrade!)")
         
-        if FASTER_WHISPER_AVAILABLE:
-            print("⚡ Using Faster-Whisper engine for ultra-fast transcription!")
-            faster_model = WhisperModel("small", device="auto", compute_type="default")
-        else:
-            print("🐢 Using standard OpenAI Whisper engine. (Run 'pip install faster-whisper' to upgrade!)")
-        
-        while True:
-            try:
-                audio = recognizer.listen(source)
+    while True:
+        device_changed = False
+        try:
+            with sr.Microphone(device_index=current_device_index) as source:
+                dev_name = "System Default" if current_device_index is None else f"Device {current_device_index}"
+                print(f"🎙️  Calibrating {dev_name} for ambient noise... Please stay quiet.")
+                recognizer.adjust_for_ambient_noise(source, duration=3)
+                recognizer.energy_threshold += 150
+                recognizer.dynamic_energy_threshold = False
+                print(f"✅ Calibration complete! Listening on {dev_name}...")
                 
-                if FASTER_WHISPER_AVAILABLE:
-                    # Get 16kHz wav bytes, bypass buggy PyAV by manually extracting PCM frames into a NumPy array
-                    wav_bytes = audio.get_wav_data(convert_rate=16000, convert_width=2)
-                    with wave.open(io.BytesIO(wav_bytes), 'rb') as wf:
-                        frames = wf.readframes(wf.getnframes())
-                        audio_array = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                    
-                    segments, info = faster_model.transcribe(audio_array, condition_on_previous_text=False)
-                    text = " ".join([segment.text for segment in segments]).lower()
-                else:
-                    text = recognizer.recognize_whisper(
-                        audio, 
-                        model="small", 
-                        condition_on_previous_text=False
-                    ).lower()
-                    
-                print(f"Recognized: {text}")  # Debug print to see what whisper hears
-                
-                # Also ignore extreme repetition loops (common Whisper bug on noise)
-                if "very very very" in text:
-                    continue
-                
-                clean_text = text.translate(str.maketrans('', '', string.punctuation))
-                
-                # Normalize known mishearings
-                for alias, real_word in PHONETIC_ALIASES.items():
-                    clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
-                    if clean_alias in clean_text:
-                        clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
+                while not device_changed:
+                    try:
+                        # timeout=1 makes it wake up every second to check if the user selected a new device
+                        audio = recognizer.listen(source, timeout=1)
+                        
+                        if FASTER_WHISPER_AVAILABLE:
+                            wav_bytes = audio.get_wav_data(convert_rate=16000, convert_width=2)
+                            with wave.open(io.BytesIO(wav_bytes), 'rb') as wf:
+                                frames = wf.readframes(wf.getnframes())
+                                audio_array = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                            
+                            segments, info = faster_model.transcribe(audio_array, condition_on_previous_text=False)
+                            text = " ".join([segment.text for segment in segments]).lower()
+                        else:
+                            text = recognizer.recognize_whisper(
+                                audio, 
+                                model="small", 
+                                condition_on_previous_text=False
+                            ).lower()
+                            
+                        print(f"Recognized: {text}")  
+                        
+                        # Ignore extreme repetition loops
+                        if "very very very" in text:
+                            continue
+                        
+                        clean_text = text.translate(str.maketrans('', '', string.punctuation))
+                        
+                        # Normalize known mishearings
+                        for alias, real_word in PHONETIC_ALIASES.items():
+                            clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
+                            if clean_alias in clean_text:
+                                clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
 
-                updated = False
-                # Make a copy of keys to safely iterate while the main thread might modify it
-                for word in list(buzzwords_dict.keys()):
-                    clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
-                    if clean_word and clean_word in clean_text:
-                        match_count = clean_text.count(clean_word)
-                        buzzwords_dict[word] += match_count
-                        updated = True
-                
-                if updated:
-                    # Push current snapshot to all web apps
-                    notify_clients(buzzwords_dict.copy())
-            except (sr.UnknownValueError, sr.RequestError):
-                pass
+                        updated = False
+                        for word in list(buzzwords_dict.keys()):
+                            clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
+                            if clean_word and clean_word in clean_text:
+                                match_count = clean_text.count(clean_word)
+                                buzzwords_dict[word] += match_count
+                                updated = True
+                        
+                        if updated:
+                            notify_clients(buzzwords_dict.copy())
+                            
+                    except sr.WaitTimeoutError:
+                        # Safe timeout if no speech detected, loops back to check device_changed
+                        continue
+                    except (sr.UnknownValueError, sr.RequestError):
+                        continue
+        except Exception as e:
+            print(f"⚠️ Microphone error: {e}")
+            import time
+            time.sleep(2)
 
 # 2. Frontend HTML & CSS with Rolling Analog Wheel Effect
 HTML_TEMPLATE = """
@@ -255,6 +269,20 @@ HTML_TEMPLATE = """
             color: #fff;
             text-shadow: 0 1px 2px rgba(0,0,0,0.8);
         }
+        
+        /* --- Hamburger Menu --- */
+        .menu-container { position: relative; display: inline-block; }
+        .hamburger-btn {
+            background-color: #2c3e50; color: white; border: 2px solid #34495e; border-radius: 4px;
+            padding: 10px 15px; font-size: 16px; cursor: pointer; transition: all 0.2s;
+        }
+        .hamburger-btn:hover { background-color: #34495e; }
+        .menu-content {
+            display: none; position: absolute; background-color: #2c3e50; min-width: 320px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.6); z-index: 100; border-radius: 8px;
+            padding: 15px; flex-direction: column; gap: 15px; top: 50px; left: 0; border: 2px solid #34495e;
+        }
+        .menu-content.show { display: flex; }
     </style>
 </head>
 <body>
@@ -263,8 +291,30 @@ HTML_TEMPLATE = """
     <p style="color: #7f8c8d;">Listening via microphone... Say one of your keywords!</p>
     
     <div class="controls">
-        <button id="enable-sound">Enable Sound Effects 🔇</button>
-        <a href="/present" target="_blank" class="btn" style="background-color: #27ae60; border-color: #2ecc71;">📺 Presentation Mode</a>
+        <div class="menu-container">
+            <button class="hamburger-btn" title="Settings" style="background-color: #34495e; padding: 10px 15px; font-size: 20px;" onclick="document.getElementById('dropdownMenu').classList.toggle('show')">⚙️</button>
+            <div id="dropdownMenu" class="menu-content">
+                <form method="POST" action="/set_device" style="margin:0; width:100%;">
+                    <label style="font-size:12px; color:#bdc3c7; margin-bottom:5px; display:block; text-transform:uppercase; font-weight:bold;">Audio Input Device</label>
+                    <select name="device_index" onchange="this.form.submit()" style="width:100%; box-sizing: border-box; background-color: #1a252f; color: white; border: 1px solid #34495e; border-radius: 4px; padding: 10px; font-size: 14px; cursor:pointer;">
+                        <option value="default" {% if current_device is none %}selected{% endif %}>🎙️ Default System Mic</option>
+                        {% for idx, name in devices %}
+                        <option value="{{ idx }}" {% if current_device == idx %}selected{% endif %}>🎙️ {{ name[:40] }}{% if name|length > 40 %}...{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <button id="enable-sound" style="width:100%; box-sizing: border-box; margin:0; background-color: #2980b9; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; cursor: pointer; transition: background-color 0.2s;">🔇 Enable Sound Effects</button>
+                <div style="margin-top: 5px;">
+                    <label style="font-size:12px; color:#bdc3c7; margin-bottom:5px; display:block; text-transform:uppercase; font-weight:bold;">Presentation Title</label>
+                    <input type="text" id="pres-title" placeholder="🎙️ LIVE BUZZWORD ODOMETER" style="width:100%; box-sizing: border-box; background-color: #1a252f; color: white; border: 1px solid #34495e; border-radius: 4px; padding: 10px; font-size: 14px;">
+                </div>
+            </div>
+        </div>
+        
+        <button onclick="openPresentation()" class="btn" title="Open Presentation Mode" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">📺</button>
+        <form method="POST" action="/reset" style="margin:0;">
+            <button type="submit" class="btn" title="Reset All Counters to Zero" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🔄</button>
+        </form>
         <form method="POST" action="/add_word" style="display:flex; gap:10px;">
             <input type="text" name="word" placeholder="Add a new buzzword..." required>
             <button type="submit" class="btn">➕ Add</button>
@@ -305,7 +355,13 @@ HTML_TEMPLATE = """
                 audioCtx.resume();
             }
             soundEnabled = !soundEnabled;
-            e.target.innerText = soundEnabled ? "Disable Sound Effects 🔊" : "Enable Sound Effects 🔇";
+            if (soundEnabled) {
+                e.target.innerText = "🔊 Disable Sound Effects";
+                e.target.style.backgroundColor = "#e74c3c";
+            } else {
+                e.target.innerText = "🔇 Enable Sound Effects";
+                e.target.style.backgroundColor = "#2980b9";
+            }
         });
 
         function playClick() {
@@ -349,8 +405,8 @@ HTML_TEMPLATE = """
             if (value > previousValues[word]) {
                 // Play click if value increased
                 playClick();
-                previousValues[word] = value;
             }
+            previousValues[word] = value;
 
             const strVal = String(value).padStart(4, '0');
             const d3 = parseInt(strVal[0]); 
@@ -384,6 +440,27 @@ HTML_TEMPLATE = """
                 }
             }
         };
+
+        // Close dropdown when clicking outside
+        window.onclick = function(event) {
+            if (!event.target.closest('.menu-container')) {
+                var dropdowns = document.getElementsByClassName("menu-content");
+                for (var i = 0; i < dropdowns.length; i++) {
+                    var openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+
+        function openPresentation() {
+            let title = document.getElementById('pres-title').value.trim();
+            if (!title) {
+                title = "🎙️ LIVE BUZZWORD ODOMETER";
+            }
+            window.open("/present?title=" + encodeURIComponent(title), "_blank");
+        }
     </script>
 </body>
 </html>
@@ -482,37 +559,43 @@ PRESENTATION_TEMPLATE = """
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding-top: 50px;
+            padding-top: 20px;
             margin: 0;
             min-height: 100vh;
+            box-sizing: border-box;
+            overflow-x: hidden;
         }
         h1 {
             color: #f39c12;
             text-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
             letter-spacing: 2px;
-            margin-bottom: 50px;
-            font-size: 3.5em;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 2em;
             text-align: center;
         }
         .container {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
             justify-content: center;
-            gap: 40px;
-            max-width: 1400px;
-            padding: 0 20px;
+            align-content: center;
+            gap: 25px;
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            flex-grow: 1;
         }
         .card {
             background: #2c3e50;
-            padding: 30px;
+            padding: 20px;
             border-radius: 12px;
             border: 4px solid #34495e;
             box-shadow: 0 12px 24px rgba(0,0,0,0.6);
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 20px;
-            min-width: 280px;
+            justify-content: center;
+            gap: 15px;
+            box-sizing: border-box;
         }
         .label {
             font-size: 24px;
@@ -526,13 +609,13 @@ PRESENTATION_TEMPLATE = """
             display: inline-flex; background: #111; padding: 8px 10px; border-radius: 6px; border: 4px solid #000; box-shadow: inset 0 0 15px #000;
         }
         .digit-container {
-            height: 60px; width: 36px; overflow: hidden; position: relative; background: linear-gradient(#222, #111 50%, #222); margin: 0 2px; border-radius: 4px; border-bottom: 2px solid #444;
+            height: 50px; width: 30px; overflow: hidden; position: relative; background: linear-gradient(#222, #111 50%, #222); margin: 0 2px; border-radius: 4px; border-bottom: 2px solid #444;
         }
         .digit-strip {
             position: absolute; top: 0; left: 0; width: 100%; transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); display: flex; flex-direction: column;
         }
         .digit {
-            height: 60px; line-height: 60px; text-align: center; font-size: 42px; font-weight: bold; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            height: 50px; line-height: 50px; text-align: center; font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
     </style>
 </head>
@@ -591,11 +674,30 @@ PRESENTATION_TEMPLATE = """
             const elD1 = document.getElementById(`${safeWord}-d1`);
             const elD0 = document.getElementById(`${safeWord}-d0`);
             
-            if (elD3) elD3.style.transform = `translateY(-${d3 * 60}px)`;
-            if (elD2) elD2.style.transform = `translateY(-${d2 * 60}px)`;
-            if (elD1) elD1.style.transform = `translateY(-${d1 * 60}px)`;
-            if (elD0) elD0.style.transform = `translateY(-${d0 * 60}px)`;
+            if (elD3) elD3.style.transform = `translateY(-${d3 * 50}px)`;
+            if (elD2) elD2.style.transform = `translateY(-${d2 * 50}px)`;
+            if (elD1) elD1.style.transform = `translateY(-${d1 * 50}px)`;
+            if (elD0) elD0.style.transform = `translateY(-${d0 * 50}px)`;
         }
+
+        function optimizeGrid() {
+            const container = document.querySelector('.container');
+            const N = document.querySelectorAll('.card').length;
+            if (N === 0) return;
+
+            let cols;
+            if (N < 6) cols = 2;
+            else if (N <= 12) cols = 3;
+            else if (N <= 16) cols = 4;
+            else cols = 5;
+
+            // Use a fixed width per item (or responsive if screen is small)
+            // 280px perfectly fits 5 cards with 25px gaps in a 1920px width.
+            container.style.gridTemplateColumns = `repeat(${cols}, min(280px, 18vw))`;
+        }
+
+        window.addEventListener('resize', optimizeGrid);
+        optimizeGrid();
 
         buzzwordsData.forEach(b => updateOdometer(b.original, 0));
 
@@ -616,7 +718,23 @@ PRESENTATION_TEMPLATE = """
 @app.route('/')
 def index():
     b_data = [{"original": word, "safe_id": make_safe_id(word)} for word in buzzwords_dict.keys()]
-    return render_template_string(HTML_TEMPLATE, buzzwords_data=b_data)
+    try:
+        devices = list(enumerate(sr.Microphone.list_microphone_names()))
+    except Exception:
+        devices = []
+    return render_template_string(HTML_TEMPLATE, buzzwords_data=b_data, devices=devices, current_device=current_device_index)
+
+@app.route('/set_device', methods=['POST'])
+def set_device():
+    global current_device_index, device_changed
+    idx_str = request.form.get('device_index')
+    if idx_str == "default" or idx_str is None:
+        current_device_index = None
+    else:
+        current_device_index = int(idx_str)
+    
+    device_changed = True
+    return redirect(url_for('index'))
 
 @app.route('/embed/<word>')
 def embed(word):
@@ -642,6 +760,13 @@ def remove_word():
     word = request.form.get('word', '').strip()
     if word in buzzwords_dict:
         del buzzwords_dict[word]
+    return redirect(url_for('index'))
+
+@app.route('/reset', methods=['POST'])
+def reset_counters():
+    for word in buzzwords_dict.keys():
+        buzzwords_dict[word] = 0
+    notify_clients(buzzwords_dict.copy())
     return redirect(url_for('index'))
 
 @app.route('/stream')
