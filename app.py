@@ -566,12 +566,18 @@ EMBED_TEMPLATE = """
         const eventSource = new EventSource("/stream");
         eventSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            if (data[targetWord] !== undefined) {
-                const count = data[targetWord];
-                if (count !== previousValue) {
-                    updateOdometer(count);
-                    previousValue = count;
-                }
+            let count = 0;
+            if (targetWord === "__TOTAL__") {
+                for (const v of Object.values(data)) count += v;
+            } else if (data[targetWord] !== undefined) {
+                count = data[targetWord];
+            } else {
+                return;
+            }
+            
+            if (count !== previousValue) {
+                updateOdometer(count);
+                previousValue = count;
             }
         };
     </script>
@@ -627,6 +633,7 @@ TOTALS_TEMPLATE = """
             <div class="digit-container"><div class="digit-strip" id="total-d1"></div></div>
             <div class="digit-container"><div class="digit-strip" id="total-d0"></div></div>
         </div>
+        <a href="/embed_total" target="_blank" style="font-size:14px; color:#3498db; text-decoration:none; margin-top:5px;">🔗 Get Embed Link</a>
     </div>
 
     <script>
@@ -919,6 +926,10 @@ def remove_all():
 def totals():
     title = request.args.get('title', '🎙️ TOTAL BUZZWORDS')
     return render_template_string(TOTALS_TEMPLATE, title=title)
+
+@app.route('/embed_total')
+def embed_total():
+    return render_template_string(EMBED_TEMPLATE, word="__TOTAL__", safe_id="total")
 
 @app.route('/stream')
 def stream():
