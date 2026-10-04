@@ -328,6 +328,7 @@ HTML_TEMPLATE = """
         <form method="POST" action="/reset" style="margin:0;">
             <button type="submit" class="btn" title="Reset All Counters to Zero" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🔄</button>
         </form>
+        <button type="button" onclick="document.getElementById('confirmModal').style.display='flex'" class="btn" title="Remove All Buzzwords" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🗑️</button>
         <form method="POST" action="/add_word" style="display:flex; gap:10px;">
             <input type="text" name="word" placeholder="Add a new buzzword..." required>
             <button type="submit" class="btn">➕ Add</button>
@@ -483,6 +484,18 @@ HTML_TEMPLATE = """
             window.open("/totals?title=" + encodeURIComponent(title), "_blank");
         }
     </script>
+    <div id="confirmModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:#2c3e50; padding:30px; border-radius:12px; border:4px solid #34495e; text-align:center; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.7);">
+            <h2 style="margin-top:0; color:#f39c12;">Are you sure?</h2>
+            <p style="font-size:18px; margin-bottom:25px;">You are about to completely delete all buzzwords from the list. This cannot be undone.</p>
+            <div style="display:flex; justify-content:center; gap:20px;">
+                <button type="button" onclick="document.getElementById('confirmModal').style.display='none'" class="btn" style="background:#7f8c8d; border-color:#95a5a6;">Cancel</button>
+                <form method="POST" action="/remove_all" style="margin:0;">
+                    <button type="submit" class="btn" style="background:#c0392b; border-color:#e74c3c;">🗑️ Delete All</button>
+                </form>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 """
