@@ -22,6 +22,9 @@ Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (Englis
 - **Presentation & Totals Mode:** Clean, scaled-up, full-screen dashboards designed for projectors. Features a "Totals Mode" that continuously aggregates all buzzwords into one master odometer. You can customize the title via the Settings menu.
 - **Individual Embeds:** Get transparent, borderless iframe links for individual odometers to embed directly into PowerPoint Web Viewer or OBS Studio.
 - **Smart Phonetic Aliasing:** Secretly corrects Whisper's common misspellings for short acronyms (e.g., mapping "k.e." to "KI").
+- **Strict Regex Word Boundaries:** Prevents false-positives when short acronyms are buried inside larger words (e.g., "AI" won't trigger if you say "again").
+- **Dual-Engine Architecture:** Choose between the ultra-lightweight original engine, or the blazing fast `RealtimeSTT` VAD streaming engine using command-line arguments.
+- **"Denglish" Support:** Optimized to flawlessly transcribe German sentences peppered with English IT terms without aggressively translating them.
 
 ## 🚀 Installation
 
@@ -56,10 +59,16 @@ pip install -r requirements.txt
 ## 🎮 Usage
 
 1. **Start the Server:**
-Ensure your virtual environment is activated, then run:
+Ensure your virtual environment is activated, then run the app. You can choose which AI engine to boot using the `--engine` flag:
+
 ```bash
-python app.py
+# Launch with the ultra-lightweight, 32-bit Classic engine (default)
+python app.py --engine classic
+
+# Launch with the lightning-fast, 8-bit quantized RealtimeSTT engine
+python app.py --engine realtimestt
 ```
+*(Tip: You can also create a `config.json` file in the root folder with `{"engine": "realtimestt"}` to set a permanent default!)*
 *(Note: The very first time you run this, it will take a minute or two to download the Whisper AI model to your computer).*
 
 2. **Calibrate:**
