@@ -21,15 +21,26 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 app = Flask(__name__)
 
-# 1. Define tracked buzzwords
-buzzwords_dict = {
-    "Artificial Intelligence": 0,
-    "Machine Learning": 0,
-    "Deep Learning": 0,
-    "AI": 0,
-    "KI": 0,
-    "Künstliche Intelligenz": 0
-}
+import os
+
+BUZZWORDS_FILE = 'buzzwords.json'
+
+if os.path.exists(BUZZWORDS_FILE):
+    with open(BUZZWORDS_FILE, 'r') as f:
+        buzzwords_dict = json.load(f)
+else:
+    buzzwords_dict = {
+        "Artificial Intelligence": 0,
+        "Machine Learning": 0,
+        "Deep Learning": 0,
+        "AI": 0,
+        "KI": 0,
+        "Künstliche Intelligenz": 0
+    }
+
+def save_buzzwords():
+    with open(BUZZWORDS_FILE, 'w') as f:
+        json.dump(buzzwords_dict, f, indent=4)
 
 # Hidden aliases for when Whisper mishears short words (especially isolated German)
 PHONETIC_ALIASES = {
@@ -125,6 +136,7 @@ def audio_listener():
                                 updated = True
                         
                         if updated:
+                            save_buzzwords()
                             notify_clients(buzzwords_dict.copy())
                             
                     except sr.WaitTimeoutError:
@@ -312,6 +324,7 @@ HTML_TEMPLATE = """
         </div>
         
         <button onclick="openPresentation()" class="btn" title="Open Presentation Mode" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">📺</button>
+        <button onclick="openTotals()" class="btn" title="Open Totals Mode" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">∑</button>
         <form method="POST" action="/reset" style="margin:0;">
             <button type="submit" class="btn" title="Reset All Counters to Zero" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🔄</button>
         </form>
@@ -461,6 +474,14 @@ HTML_TEMPLATE = """
             }
             window.open("/present?title=" + encodeURIComponent(title), "_blank");
         }
+
+        function openTotals() {
+            let title = document.getElementById('pres-title').value.trim();
+            if (!title) {
+                title = "🎙️ LIVE BUZZWORD ODOMETER";
+            }
+            window.open("/totals?title=" + encodeURIComponent(title), "_blank");
+        }
     </script>
 </body>
 </html>
@@ -538,6 +559,108 @@ EMBED_TEMPLATE = """
                     updateOdometer(count);
                     previousValue = count;
                 }
+            }
+        };
+    </script>
+</body>
+</html>
+"""
+
+TOTALS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Total Buzzwords</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; background: #1a1a1a; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; 
+            font-family: 'Courier New', Courier, monospace; overflow-x: hidden; color: #e0e0e0; box-sizing: border-box; padding: 20px;
+        }
+        h1 {
+            color: #f39c12; text-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
+            letter-spacing: 2px; margin-top: 0; margin-bottom: 25px; font-size: 2.5em; text-align: center;
+        }
+        .card {
+            background: #2c3e50; padding: 40px; border-radius: 15px; border: 5px solid #34495e;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.7); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 20px; width: 100%; max-width: 450px;
+        }
+        .label {
+            font-size: 32px; font-weight: bold; text-transform: uppercase; color: #ecf0f1; text-align: center;
+        }
+        .odometer {
+            display: inline-flex; background: #111; padding: 15px 20px; border-radius: 10px; border: 5px solid #000; box-shadow: inset 0 0 25px #000;
+        }
+        .digit-container {
+            height: 70px; width: 48px; overflow: hidden; position: relative; background: linear-gradient(#222, #111 50%, #222); margin: 0 4px; border-radius: 6px; border-bottom: 3px solid #444;
+        }
+        .digit-strip {
+            position: absolute; top: 0; left: 0; width: 100%; transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); display: flex; flex-direction: column;
+        }
+        .digit {
+            height: 70px; line-height: 70px; text-align: center; font-size: 48px; font-weight: bold; color: #fff; text-shadow: 0 3px 6px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+    <div class="card">
+        <span class="label">TOTAL COUNT</span>
+        <div class="odometer" id="odo-total">
+            <div class="digit-container"><div class="digit-strip" id="total-d3"></div></div>
+            <div class="digit-container"><div class="digit-strip" id="total-d2"></div></div>
+            <div class="digit-container"><div class="digit-strip" id="total-d1"></div></div>
+            <div class="digit-container"><div class="digit-strip" id="total-d0"></div></div>
+        </div>
+    </div>
+
+    <script>
+        ['d0', 'd1', 'd2', 'd3'].forEach(digitId => {
+            const strip = document.getElementById(`total-${digitId}`);
+            if (strip) {
+                for (let i = 0; i <= 9; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'digit';
+                    div.innerText = i;
+                    strip.appendChild(div);
+                }
+            }
+        });
+
+        let currentTotal = 0;
+
+        function updateOdometer(value) {
+            const strVal = String(value).padStart(4, '0');
+            const d3 = parseInt(strVal[0]); 
+            const d2 = parseInt(strVal[1]); 
+            const d1 = parseInt(strVal[2]); 
+            const d0 = parseInt(strVal[3]); 
+
+            const elD3 = document.getElementById('total-d3');
+            const elD2 = document.getElementById('total-d2');
+            const elD1 = document.getElementById('total-d1');
+            const elD0 = document.getElementById('total-d0');
+            
+            if (elD3) elD3.style.transform = `translateY(-${d3 * 70}px)`;
+            if (elD2) elD2.style.transform = `translateY(-${d2 * 70}px)`;
+            if (elD1) elD1.style.transform = `translateY(-${d1 * 70}px)`;
+            if (elD0) elD0.style.transform = `translateY(-${d0 * 70}px)`;
+        }
+
+        updateOdometer(0);
+
+        const eventSource = new EventSource("/stream");
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            let sum = 0;
+            for (const count of Object.values(data)) {
+                sum += count;
+            }
+            if (sum !== currentTotal) {
+                currentTotal = sum;
+                updateOdometer(sum);
             }
         };
     </script>
@@ -753,6 +876,7 @@ def add_word():
     word = request.form.get('word', '').strip()
     if word and word not in buzzwords_dict:
         buzzwords_dict[word] = 0
+        save_buzzwords()
     return redirect(url_for('index'))
 
 @app.route('/remove_word', methods=['POST'])
@@ -760,14 +884,28 @@ def remove_word():
     word = request.form.get('word', '').strip()
     if word in buzzwords_dict:
         del buzzwords_dict[word]
+        save_buzzwords()
     return redirect(url_for('index'))
 
 @app.route('/reset', methods=['POST'])
 def reset_counters():
     for word in buzzwords_dict.keys():
         buzzwords_dict[word] = 0
+    save_buzzwords()
     notify_clients(buzzwords_dict.copy())
     return redirect(url_for('index'))
+
+@app.route('/remove_all', methods=['POST'])
+def remove_all():
+    buzzwords_dict.clear()
+    save_buzzwords()
+    notify_clients(buzzwords_dict.copy())
+    return redirect(url_for('index'))
+
+@app.route('/totals')
+def totals():
+    title = request.args.get('title', '🎙️ TOTAL BUZZWORDS')
+    return render_template_string(TOTALS_TEMPLATE, title=title)
 
 @app.route('/stream')
 def stream():
