@@ -65,6 +65,29 @@ def notify_clients(data):
 current_device_index = None
 device_changed = False
 global_recorder = None
+current_language = "auto"
+WHISPER_LANGUAGES = {
+    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese", "az": "Azerbaijani", 
+    "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian", "bn": "Bengali", "bo": "Tibetan", 
+    "br": "Breton", "bs": "Bosnian", "ca": "Catalan", "cs": "Czech", "cy": "Welsh", 
+    "da": "Danish", "el": "Greek", "es": "Spanish", "et": "Estonian", "eu": "Basque", 
+    "fa": "Persian", "fi": "Finnish", "fo": "Faroese", "fr": "French", "gl": "Galician", 
+    "gu": "Gujarati", "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi", 
+    "hr": "Croatian", "ht": "Haitian", "hu": "Hungarian", "hy": "Armenian", "id": "Indonesian", 
+    "is": "Icelandic", "it": "Italian", "ja": "Japanese", "jw": "Javanese", "ka": "Georgian", 
+    "kk": "Kazakh", "km": "Khmer", "kn": "Kannada", "ko": "Korean", "la": "Latin", 
+    "lb": "Luxembourgish", "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian", 
+    "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam", "mn": "Mongolian", 
+    "mr": "Marathi", "ms": "Malay", "mt": "Maltese", "my": "Myanmar", "ne": "Nepali", 
+    "nl": "Dutch", "nn": "Nynorsk", "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", 
+    "pl": "Polish", "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian", 
+    "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak", "sl": "Slovenian", 
+    "sn": "Shona", "so": "Somali", "sq": "Albanian", "sr": "Serbian", "su": "Sundanese", 
+    "sv": "Swedish", "sw": "Swahili", "ta": "Tamil", "te": "Telugu", "tg": "Tajik", 
+    "th": "Thai", "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar", 
+    "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese", "yi": "Yiddish", 
+    "yo": "Yoruba", "zh": "Chinese"
+}
 
 def classic_audio_listener():
     global current_device_index, device_changed
@@ -107,12 +130,13 @@ def classic_audio_listener():
                                 frames = wf.readframes(wf.getnframes())
                                 audio_array = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
                             
-                            segments, info = faster_model.transcribe(audio_array, condition_on_previous_text=False)
+                            segments, info = faster_model.transcribe(audio_array, language=current_language if current_language != 'auto' else None, condition_on_previous_text=False)
                             text = " ".join([segment.text for segment in segments]).lower()
                         else:
                             text = recognizer.recognize_whisper(
                                 audio, 
                                 model="small", 
+                                language=current_language if current_language != 'auto' else None,
                                 condition_on_previous_text=False
                             ).lower()
                             
@@ -202,11 +226,12 @@ def realtimestt_audio_listener():
         try:
             with AudioToTextRecorder(
                 model="small",
-                #language="en",
+                language=current_language if current_language != "auto" else "",
+                device="cuda",
                 input_device_index=current_device_index,
                 enable_realtime_transcription=True,
                 on_realtime_transcription_update=process_text_chunk,
-                realtime_model_type="tiny.en",
+                realtime_model_type="tiny.en" if current_language == "en" else "tiny",
                 silero_use_onnx=False,
                 spinner=False
             ) as recorder:
@@ -943,7 +968,7 @@ def index():
         devices = list(enumerate(sr.Microphone.list_microphone_names()))
     except Exception:
         devices = []
-    return render_template_string(HTML_TEMPLATE, buzzwords_data=b_data, devices=devices, current_device=current_device_index)
+    return render_template_string(HTML_TEMPLATE, buzzwords_data=b_data, devices=devices, current_device=current_device_index, languages=WHISPER_LANGUAGES, current_language=current_language)
 
 @app.route('/set_device', methods=['POST'])
 def set_device():
@@ -958,6 +983,17 @@ def set_device():
     if global_recorder:
         global_recorder.shutdown()
         
+    return redirect(url_for('index'))
+
+@app.route('/set_language', methods=['POST'])
+def set_language():
+    global current_language, device_changed, global_recorder
+    lang = request.form.get('language')
+    if lang:
+        current_language = lang
+    device_changed = True
+    if global_recorder:
+        global_recorder.shutdown()
     return redirect(url_for('index'))
 
 @app.route('/embed/<word>')
