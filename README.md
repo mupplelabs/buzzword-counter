@@ -11,12 +11,15 @@ Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (Englis
 ## ✨ Features
 
 - **Real-Time AI Transcription:** Uses your default microphone to transcribe speech instantly.
+- **Dynamic Microphone Selection:** Seamlessly switch between microphones (or virtual loopbacks like BlackHole) directly from the web dashboard without restarting the server!
 - **Bilingual Auto-Detection:** Seamlessly understands both English and German phrasing without manually switching languages.
 - **Ultra-Fast Local Inference:** Bypasses standard APIs to use `faster-whisper` directly on your CPU/GPU, ensuring your data never leaves your machine.
+- **JSON State Persistence:** Automatically saves your buzzwords and their current counts to a local `buzzwords.json` file. You can reboot the server without losing your curated list or progress!
 - **Retro Odometer UI:** Gorgeous 4-digit mechanical rolling wheels that spin up when a buzzword is detected.
 - **Mechanical Sound Effects:** Generates synthetic "click" sounds via the Web Audio API every time an odometer turns.
-- **Dynamic Configuration:** Add or remove tracked buzzwords on the fly through the web UI without restarting the server!
-- **Presentation Mode:** A clean, scaled-up, full-screen dashboard designed specifically for projectors. You can customize the title via the URL (e.g., `?title=My%20Presentation`).
+- **Dynamic Configuration:** Add, remove, or reset tracked buzzwords on the fly through the web UI.
+- **Dynamic Responsive Grid:** The presentation layout uses a custom algorithm that perfectly stacks your odometers into a symmetrical, centered grid regardless of if you have 1 buzzword or 20!
+- **Presentation & Totals Mode:** Clean, scaled-up, full-screen dashboards designed for projectors. Features a "Totals Mode" that continuously aggregates all buzzwords into one master odometer. You can customize the title via the Settings menu.
 - **Individual Embeds:** Get transparent, borderless iframe links for individual odometers to embed directly into PowerPoint Web Viewer or OBS Studio.
 - **Smart Phonetic Aliasing:** Secretly corrects Whisper's common misspellings for short acronyms (e.g., mapping "k.e." to "KI").
 
