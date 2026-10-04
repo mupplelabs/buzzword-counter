@@ -71,85 +71,83 @@ def notify_clients(data):
 current_device_index = None
 device_changed = False
 
-global_recorder = None
-
 def audio_listener():
-    global current_device_index, device_changed, global_recorder
+    global current_device_index, device_changed
     """Listens to microphone in the background and queues updates."""
+    recognizer = sr.Recognizer()
     
-    # Import RealtimeSTT here just in case PyAudio fails on some systems early on
-    import ssl
-    import torch
-    if hasattr(torch.hub, "_check_repo_is_trusted"):
-        torch.hub._check_repo_is_trusted = lambda *a, **k: True
-    ssl._create_default_https_context = ssl._create_unverified_context
-    
-    from RealtimeSTT import AudioToTextRecorder
-    
+    if FASTER_WHISPER_AVAILABLE:
+        print("⚡ Using Faster-Whisper engine for ultra-fast transcription!")
+        faster_model = WhisperModel("small", device="auto", compute_type="default")
+    else:
+        print("🐢 Using standard OpenAI Whisper engine. (Run 'pip install faster-whisper' to upgrade!)")
+        
     while True:
         device_changed = False
-        dev_name = "System Default" if current_device_index is None else f"Device {current_device_index}"
-        print(f"🎙️ Starting RealtimeSTT on {dev_name}...")
-        
-        current_utterance_matches = {}
-        
-        def process_text_chunk(text):
-            clean_text = text.lower().translate(str.maketrans('', '', string.punctuation))
-            
-            # Ignore extreme repetition loops
-            if "very very very" in clean_text:
-                return
-                
-            for alias, real_word in PHONETIC_ALIASES.items():
-                clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
-                if clean_alias in clean_text:
-                    clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
-                    
-            updated = False
-            for word in list(buzzwords_dict.keys()):
-                clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
-                if clean_word and clean_word in clean_text:
-                    match_count = clean_text.count(clean_word)
-                    
-                    # Diff matching to prevent overcounting during real-time updates
-                    previous_count = current_utterance_matches.get(word, 0)
-                    if match_count > previous_count:
-                        diff = match_count - previous_count
-                        buzzwords_dict[word] += diff
-                        current_utterance_matches[word] = match_count
-                        updated = True
-            
-            if updated:
-                save_buzzwords()
-                notify_clients(buzzwords_dict.copy())
-                
         try:
-            with AudioToTextRecorder(
-                model="small",
-                language="en",
-                input_device_index=current_device_index,
-                enable_realtime_transcription=True,
-                on_realtime_transcription_update=process_text_chunk,
-                realtime_model_type="tiny.en",
-                silero_use_onnx=False
-            ) as recorder:
-                global_recorder = recorder
-                print(f"✅ Ready! Listening on {dev_name}...")
+            with sr.Microphone(device_index=current_device_index) as source:
+                dev_name = "System Default" if current_device_index is None else f"Device {current_device_index}"
+                print(f"🎙️  Calibrating {dev_name} for ambient noise... Please stay quiet.")
+                recognizer.adjust_for_ambient_noise(source, duration=3)
+                recognizer.energy_threshold += 150
+                recognizer.dynamic_energy_threshold = False
+                print(f"✅ Calibration complete! Listening on {dev_name}...")
                 
                 while not device_changed:
-                    # Blocks until the VAD detects a pause and finalized text is ready
-                    text = recorder.text()
-                    if text:
-                        print(f"Recognized: {text}")
-                        process_text_chunk(text)
-                    current_utterance_matches.clear()
-                    
+                    try:
+                        # timeout=1 makes it wake up every second to check if the user selected a new device
+                        audio = recognizer.listen(source, timeout=1)
+                        
+                        if FASTER_WHISPER_AVAILABLE:
+                            wav_bytes = audio.get_wav_data(convert_rate=16000, convert_width=2)
+                            with wave.open(io.BytesIO(wav_bytes), 'rb') as wf:
+                                frames = wf.readframes(wf.getnframes())
+                                audio_array = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                            
+                            segments, info = faster_model.transcribe(audio_array, condition_on_previous_text=False)
+                            text = " ".join([segment.text for segment in segments]).lower()
+                        else:
+                            text = recognizer.recognize_whisper(
+                                audio, 
+                                model="small", 
+                                condition_on_previous_text=False
+                            ).lower()
+                            
+                        print(f"Recognized: {text}")  
+                        
+                        # Ignore extreme repetition loops
+                        if "very very very" in text:
+                            continue
+                        
+                        clean_text = text.translate(str.maketrans('', '', string.punctuation))
+                        
+                        # Normalize known mishearings
+                        for alias, real_word in PHONETIC_ALIASES.items():
+                            clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
+                            if clean_alias in clean_text:
+                                clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
+
+                        updated = False
+                        for word in list(buzzwords_dict.keys()):
+                            clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
+                            if clean_word and clean_word in clean_text:
+                                match_count = clean_text.count(clean_word)
+                                buzzwords_dict[word] += match_count
+                                updated = True
+                        
+                        if updated:
+                            save_buzzwords()
+                            notify_clients(buzzwords_dict.copy())
+                            
+                    except sr.WaitTimeoutError:
+                        # Safe timeout if no speech detected, loops back to check device_changed
+                        continue
+                    except (sr.UnknownValueError, sr.RequestError):
+                        continue
         except Exception as e:
             print(f"⚠️ Microphone error: {e}")
             import time
             time.sleep(2)
-        finally:
-            global_recorder = None
 
 # 2. Frontend HTML & CSS with Rolling Analog Wheel Effect
 HTML_TEMPLATE = """
@@ -871,7 +869,7 @@ def index():
 
 @app.route('/set_device', methods=['POST'])
 def set_device():
-    global current_device_index, device_changed, global_recorder
+    global current_device_index, device_changed
     idx_str = request.form.get('device_index')
     if idx_str == "default" or idx_str is None:
         current_device_index = None
@@ -879,9 +877,6 @@ def set_device():
         current_device_index = int(idx_str)
     
     device_changed = True
-    if global_recorder:
-        global_recorder.shutdown()
-        
     return redirect(url_for('index'))
 
 @app.route('/embed/<word>')
