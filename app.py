@@ -418,6 +418,19 @@ HTML_TEMPLATE = """
                         {% endfor %}
                     </select>
                 </form>
+                
+                <form method="POST" action="/set_language" style="margin:15px 0 15px 0; width:100%;">
+                    <label style="font-size:12px; color:#bdc3c7; margin-bottom:5px; display:block; text-transform:uppercase; font-weight:bold;">Recognition Language</label>
+                    <select name="language" onchange="this.form.submit()" style="width:100%; box-sizing: border-box; background-color: #1a252f; color: white; border: 1px solid #34495e; border-radius: 4px; padding: 10px; font-size: 14px; cursor:pointer;">
+                        <option value="auto" {% if current_language == 'auto' %}selected{% endif %}>🌍 Auto-Detect (Mixed)</option>
+                        <option value="en" {% if current_language == 'en' %}selected{% endif %}>🇬🇧 English</option>
+                        <option value="de" {% if current_language == 'de' %}selected{% endif %}>🇩🇪 German</option>
+                        <option disabled>──────────</option>
+                        {% for code, name in languages.items() %}
+                            <option value="{{ code }}" {% if current_language == code %}selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
                 <button id="enable-sound" style="width:100%; box-sizing: border-box; margin:0; background-color: #2980b9; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; cursor: pointer; transition: background-color 0.2s;">🔇 Enable Sound Effects</button>
                 <div style="margin-top: 5px;">
                     <label style="font-size:12px; color:#bdc3c7; margin-bottom:5px; display:block; text-transform:uppercase; font-weight:bold;">Presentation Title</label>
