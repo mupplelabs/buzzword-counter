@@ -12,8 +12,10 @@ Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (Englis
 
 - **Real-Time AI Transcription:** Uses your default microphone to transcribe speech instantly.
 - **Dynamic Microphone Selection:** Seamlessly switch between microphones (or virtual loopbacks like BlackHole) directly from the web dashboard without restarting the server!
-- **Bilingual Auto-Detection:** Seamlessly understands both English and German phrasing without manually switching languages.
+- **99-Language UI Hot-Swapping:** Change the active transcription language mid-presentation via a native dropdown in the settings menu without restarting the server.
+- **Bilingual Auto-Detection:** Leave the setting on 'Auto-Detect' to organically handle "Denglish" and mixed-language IT jargon without forcing translations.
 - **Ultra-Fast Local Inference:** Bypasses standard APIs to use `faster-whisper` directly on your CPU/GPU, ensuring your data never leaves your machine.
+- **Zero-Latency Booting:** Heavy neural network dependencies are lazily loaded into the active audio engine thread, resulting in instantaneous server boot times and minimized RAM consumption.
 - **JSON State Persistence:** Automatically saves your buzzwords and their current counts to a local `buzzwords.json` file. You can reboot the server without losing your curated list or progress!
 - **Retro Odometer UI:** Gorgeous 4-digit mechanical rolling wheels that spin up when a buzzword is detected.
 - **Mechanical Sound Effects:** Generates synthetic "click" sounds via the Web Audio API every time an odometer turns.
