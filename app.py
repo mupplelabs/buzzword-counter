@@ -9,14 +9,6 @@ import string
 import speech_recognition as sr
 from flask import Flask, Response, render_template_string, request, redirect, url_for
 import io
-import wave
-import numpy as np
-
-try:
-    from faster_whisper import WhisperModel
-    FASTER_WHISPER_AVAILABLE = True
-except ImportError:
-    FASTER_WHISPER_AVAILABLE = False
 
 # Fix for MacOS SSL certificate issues when downloading the Whisper model
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -76,6 +68,14 @@ global_recorder = None
 
 def classic_audio_listener():
     global current_device_index, device_changed
+    import wave
+    import numpy as np
+    try:
+        from faster_whisper import WhisperModel
+        FASTER_WHISPER_AVAILABLE = True
+    except ImportError:
+        FASTER_WHISPER_AVAILABLE = False
+
     """Listens to microphone in the background and queues updates."""
     recognizer = sr.Recognizer()
     
