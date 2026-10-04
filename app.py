@@ -42,7 +42,11 @@ PHONETIC_ALIASES = {
     "k.e": "KI",
     "kai": "KI",
     "cut you": "KI",
-    "die planning": "Deep Learning"
+    "die planning": "Deep Learning",
+    "Maschinenlearning": "Machine Learning",
+    "Maschin-Learning": "Machine Learning",
+    "Maschi": "Machine",
+    "Maschin": "Machine"    
 }
 
 # Create robust HTML IDs for each buzzword
