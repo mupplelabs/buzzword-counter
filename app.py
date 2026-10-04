@@ -682,7 +682,8 @@ PRESENTATION_TEMPLATE = """
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding-top: 20px;
+            justify-content: center;
+            padding: 20px;
             margin: 0;
             min-height: 100vh;
             box-sizing: border-box;
@@ -693,7 +694,7 @@ PRESENTATION_TEMPLATE = """
             text-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
             letter-spacing: 2px;
             margin-top: 0;
-            margin-bottom: 15px;
+            margin-bottom: 25px;
             font-size: 2em;
             text-align: center;
         }
@@ -703,9 +704,7 @@ PRESENTATION_TEMPLATE = """
             align-content: center;
             gap: 25px;
             width: 100%;
-            padding: 20px;
             box-sizing: border-box;
-            flex-grow: 1;
         }
         .card {
             background: #2c3e50;
@@ -809,7 +808,8 @@ PRESENTATION_TEMPLATE = """
             if (N === 0) return;
 
             let cols;
-            if (N < 6) cols = 2;
+            if (N === 1) cols = 1;
+            else if (N < 6) cols = 2;
             else if (N <= 12) cols = 3;
             else if (N <= 16) cols = 4;
             else cols = 5;
