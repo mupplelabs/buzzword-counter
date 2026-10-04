@@ -1,4 +1,5 @@
 import json
+import re
 import argparse
 import queue
 import threading
@@ -132,10 +133,12 @@ def classic_audio_listener():
                         updated = False
                         for word in list(buzzwords_dict.keys()):
                             clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
-                            if clean_word and clean_word in clean_text:
-                                match_count = clean_text.count(clean_word)
-                                buzzwords_dict[word] += match_count
-                                updated = True
+                            if clean_word:
+                                pattern = r'\b' + re.escape(clean_word) + r'\b'
+                                match_count = len(re.findall(pattern, clean_text))
+                                if match_count > 0:
+                                    buzzwords_dict[word] += match_count
+                                    updated = True
                         
                         if updated:
                             save_buzzwords()
@@ -181,8 +184,9 @@ def realtimestt_audio_listener():
             updated = False
             for word in list(buzzwords_dict.keys()):
                 clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
-                if clean_word and clean_word in clean_text:
-                    match_count = clean_text.count(clean_word)
+                if clean_word:
+                    pattern = r'\b' + re.escape(clean_word) + r'\b'
+                    match_count = len(re.findall(pattern, clean_text))
                     
                     previous_count = current_utterance_matches.get(word, 0)
                     if match_count > previous_count:
