@@ -202,7 +202,7 @@ def realtimestt_audio_listener():
         try:
             with AudioToTextRecorder(
                 model="small",
-                language="en",
+                #language="en",
                 input_device_index=current_device_index,
                 enable_realtime_transcription=True,
                 on_realtime_transcription_update=process_text_chunk,
