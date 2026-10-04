@@ -1,4 +1,5 @@
 import json
+import argparse
 import queue
 import threading
 import base64
@@ -70,8 +71,9 @@ def notify_clients(data):
 # Device management globals
 current_device_index = None
 device_changed = False
+global_recorder = None
 
-def audio_listener():
+def classic_audio_listener():
     global current_device_index, device_changed
     """Listens to microphone in the background and queues updates."""
     recognizer = sr.Recognizer()
@@ -148,6 +150,78 @@ def audio_listener():
             print(f"⚠️ Microphone error: {e}")
             import time
             time.sleep(2)
+
+
+def realtimestt_audio_listener():
+    global current_device_index, device_changed, global_recorder
+    import torch
+    if hasattr(torch.hub, "_check_repo_is_trusted"):
+        torch.hub._check_repo_is_trusted = lambda *a, **k: True
+        
+    from RealtimeSTT import AudioToTextRecorder
+    
+    while True:
+        device_changed = False
+        dev_name = "System Default" if current_device_index is None else f"Device {current_device_index}"
+        print(f"🎙️ Starting RealtimeSTT on {dev_name}...")
+        
+        current_utterance_matches = {}
+        
+        def process_text_chunk(text):
+            clean_text = text.lower().translate(str.maketrans('', '', string.punctuation))
+            
+            if "very very very" in clean_text:
+                return
+                
+            for alias, real_word in PHONETIC_ALIASES.items():
+                clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
+                if clean_alias in clean_text:
+                    clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
+                    
+            updated = False
+            for word in list(buzzwords_dict.keys()):
+                clean_word = word.lower().translate(str.maketrans('', '', string.punctuation))
+                if clean_word and clean_word in clean_text:
+                    match_count = clean_text.count(clean_word)
+                    
+                    previous_count = current_utterance_matches.get(word, 0)
+                    if match_count > previous_count:
+                        diff = match_count - previous_count
+                        buzzwords_dict[word] += diff
+                        current_utterance_matches[word] = match_count
+                        updated = True
+            
+            if updated:
+                save_buzzwords()
+                notify_clients(buzzwords_dict.copy())
+                
+        try:
+            with AudioToTextRecorder(
+                model="small",
+                language="en",
+                input_device_index=current_device_index,
+                enable_realtime_transcription=True,
+                on_realtime_transcription_update=process_text_chunk,
+                realtime_model_type="tiny.en",
+                silero_use_onnx=False,
+                spinner=False
+            ) as recorder:
+                global_recorder = recorder
+                print(f"✅ Ready! Listening on {dev_name} (RealtimeSTT)...")
+                
+                while not device_changed:
+                    text = recorder.text()
+                    if text:
+                        print(f"Recognized: {text}")
+                        process_text_chunk(text)
+                    current_utterance_matches.clear()
+                    
+        except Exception as e:
+            print(f"⚠️ Microphone error: {e}")
+            import time
+            time.sleep(2)
+        finally:
+            global_recorder = None
 
 # 2. Frontend HTML & CSS with Rolling Analog Wheel Effect
 HTML_TEMPLATE = """
@@ -869,7 +943,7 @@ def index():
 
 @app.route('/set_device', methods=['POST'])
 def set_device():
-    global current_device_index, device_changed
+    global current_device_index, device_changed, global_recorder
     idx_str = request.form.get('device_index')
     if idx_str == "default" or idx_str is None:
         current_device_index = None
@@ -877,6 +951,9 @@ def set_device():
         current_device_index = int(idx_str)
     
     device_changed = True
+    if global_recorder:
+        global_recorder.shutdown()
+        
     return redirect(url_for('index'))
 
 @app.route('/embed/<word>')
@@ -953,5 +1030,28 @@ def stream():
     return Response(event_stream(), mimetype="text/event-stream")
 
 if __name__ == '__main__':
-    threading.Thread(target=audio_listener, daemon=True).start()
+    parser = argparse.ArgumentParser(description="Buzzword Counter")
+    parser.add_argument("--engine", choices=["classic", "realtimestt"], help="Audio engine to use")
+    args = parser.parse_args()
+    
+    # 1. Config file
+    config_engine = "classic"
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
+                config_engine = config.get("engine", "classic")
+        except Exception as e:
+            print(f"⚠️ Error reading config.json: {e}")
+            
+    # 2. CLI Override
+    final_engine = args.engine if args.engine else config_engine
+    
+    print(f"🚀 Starting Buzzword Counter with '{final_engine}' engine!")
+    
+    if final_engine == "realtimestt":
+        threading.Thread(target=realtimestt_audio_listener, daemon=True).start()
+    else:
+        threading.Thread(target=classic_audio_listener, daemon=True).start()
+        
     app.run(debug=False, port=5000)
