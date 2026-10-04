@@ -5,3 +5,4 @@ openai-whisper==20250625
 soundfile==0.14.0
 faster-whisper==1.2.1
 numpy==2.5.3
+realtimestt==1.0.4
