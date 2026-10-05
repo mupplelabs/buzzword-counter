@@ -1101,22 +1101,49 @@ def stream():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Buzzword Counter")
     parser.add_argument("--engine", choices=["classic", "realtimestt"], help="Audio engine to use")
+    parser.add_argument("--insecure", action="store_true", help="Disable SSL certificate verification for corporate proxies")
     args = parser.parse_args()
     
     # 1. Config file
     config_engine = "classic"
+    config_insecure = False
     if os.path.exists("config.json"):
         try:
             with open("config.json", "r") as f:
                 config = json.load(f)
                 config_engine = config.get("engine", "classic")
+                config_insecure = config.get("insecure", False)
         except Exception as e:
             print(f"⚠️ Error reading config.json: {e}")
             
     # 2. CLI Override
     final_engine = args.engine if args.engine else config_engine
+    use_insecure = args.insecure or config_insecure
     
     print(f"🚀 Starting Buzzword Counter with '{final_engine}' engine!")
+    
+    # 3. Apply SSL Bypasses if insecure mode is triggered
+    if use_insecure:
+        print("⚠️  Running in INSECURE mode: SSL certificate verification is disabled.")
+        import urllib3
+        import requests
+        import httpx
+        import warnings
+        
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+        
+        old_req = requests.Session.request
+        def new_req(*args, **kwargs):
+            kwargs['verify'] = False
+            return old_req(*args, **kwargs)
+        requests.Session.request = new_req
+        
+        old_httpx = httpx.Client.__init__
+        def new_httpx(self, *args, **kwargs):
+            kwargs['verify'] = False
+            old_httpx(self, *args, **kwargs)
+        httpx.Client.__init__ = new_httpx
     
     if final_engine == "realtimestt":
         threading.Thread(target=realtimestt_audio_listener, daemon=True).start()
