@@ -89,9 +89,14 @@ if global_insecure:
 BUZZWORDS_FILE = 'buzzwords.json'
 
 if os.path.exists(BUZZWORDS_FILE):
-    with open(BUZZWORDS_FILE, 'r') as f:
-        buzzwords_dict = json.load(f)
-else:
+    try:
+        with open(BUZZWORDS_FILE, 'r') as f:
+            buzzwords_dict = json.load(f)
+    except Exception as e:
+        print(f"⚠️ Warning: {BUZZWORDS_FILE} is corrupted or invalid. Falling back to defaults.")
+        buzzwords_dict = None
+
+if not os.path.exists(BUZZWORDS_FILE) or buzzwords_dict is None:
     buzzwords_dict = {
         "Artificial Intelligence": 0,
         "Machine Learning": 0,
