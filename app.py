@@ -1020,6 +1020,20 @@ def set_language():
     lang = request.form.get('language')
     if lang:
         current_language = lang
+        
+        # Save to config.json
+        import os, json
+        try:
+            config_data = {}
+            if os.path.exists("config.json"):
+                with open("config.json", "r") as f:
+                    config_data = json.load(f)
+            config_data["language"] = current_language
+            with open("config.json", "w") as f:
+                json.dump(config_data, f, indent=4)
+        except Exception as e:
+            print(f"⚠️ Failed to save language to config: {e}")
+            
     device_changed = True
     if global_recorder:
         global_recorder.shutdown()
@@ -1113,6 +1127,8 @@ if __name__ == '__main__':
                 config = json.load(f)
                 config_engine = config.get("engine", "classic")
                 config_insecure = config.get("insecure", False)
+                if "language" in config:
+                    current_language = config["language"]
         except Exception as e:
             print(f"⚠️ Error reading config.json: {e}")
             
