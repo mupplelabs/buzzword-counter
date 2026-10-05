@@ -16,7 +16,9 @@ Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (Englis
 - **Bilingual Auto-Detection:** Leave the setting on 'Auto-Detect' to organically handle "Denglish" and mixed-language IT jargon without forcing translations.
 - **Ultra-Fast Local Inference:** Bypasses standard APIs to use `faster-whisper` directly on your CPU/GPU, ensuring your data never leaves your machine.
 - **Zero-Latency Booting:** Heavy neural network dependencies are lazily loaded into the active audio engine thread, resulting in instantaneous server boot times and minimized RAM consumption.
-- **JSON State Persistence:** Automatically saves your buzzwords and their current counts to a local `buzzwords.json` file. You can reboot the server without losing your curated list or progress!
+- **Corporate Proxy Bypass:** Built-in `--insecure` flag forcefully patches `requests` and `httpx` to ignore SSL certificate validation errors caused by enterprise MITM proxies.
+- **Resilient Error Routing:** AI threads automatically distinguish between transient microphone hardware glitches (which trigger an automatic retry) and fatal network/GPU configuration errors (which gracefully kill the server).
+- **JSON State Persistence:** Automatically saves your buzzwords and their current counts to a local `buzzwords.json` file. It also saves your UI language preference to `config.json`! You can reboot the server without losing your curated list or progress!
 - **Retro Odometer UI:** Gorgeous 4-digit mechanical rolling wheels that spin up when a buzzword is detected.
 - **Mechanical Sound Effects:** Generates synthetic "click" sounds via the Web Audio API every time an odometer turns.
 - **Dynamic Configuration:** Add, remove, or reset tracked buzzwords on the fly through the web UI.
@@ -70,7 +72,11 @@ python app.py --engine classic
 # Launch with the lightning-fast, 8-bit quantized RealtimeSTT engine
 python app.py --engine realtimestt
 ```
-*(Tip: You can also create a `config.json` file in the root folder with `{"engine": "realtimestt"}` to set a permanent default!)*
+```bash
+# Launch behind a strict corporate MITM proxy (disables SSL validation)
+python app.py --engine realtimestt --insecure
+```
+*(Tip: You can permanently configure these flags by creating a `config.json` file in the root folder with `{"engine": "realtimestt", "insecure": true, "language": "de"}`!)*
 *(Note: The very first time you run this, it will take a minute or two to download the Whisper AI model to your computer).*
 
 2. **Calibrate:**
