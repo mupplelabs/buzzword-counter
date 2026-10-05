@@ -202,8 +202,10 @@ def classic_audio_listener():
                         # Normalize known mishearings
                         for alias, real_word in PHONETIC_ALIASES.items():
                             clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
-                            if clean_alias in clean_text:
-                                clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
+                            if clean_alias and clean_alias in clean_text:
+                                pattern = r'\b' + re.escape(clean_alias) + r'\b'
+                                real_clean = real_word.lower().translate(str.maketrans('', '', string.punctuation))
+                                clean_text = re.sub(pattern, real_clean, clean_text)
 
                         updated = False
                         for word in list(buzzwords_dict.keys()):
@@ -258,8 +260,10 @@ def realtimestt_audio_listener():
                 
             for alias, real_word in PHONETIC_ALIASES.items():
                 clean_alias = alias.lower().translate(str.maketrans('', '', string.punctuation))
-                if clean_alias in clean_text:
-                    clean_text = clean_text.replace(clean_alias, real_word.lower().translate(str.maketrans('', '', string.punctuation)))
+                if clean_alias and clean_alias in clean_text:
+                    pattern = r'\b' + re.escape(clean_alias) + r'\b'
+                    real_clean = real_word.lower().translate(str.maketrans('', '', string.punctuation))
+                    clean_text = re.sub(pattern, real_clean, clean_text)
                     
             updated = False
             for word in list(buzzwords_dict.keys()):
