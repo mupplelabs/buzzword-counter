@@ -27,6 +27,28 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 app = Flask(__name__)
 
+import logging
+
+class WinError6Filter(logging.Filter):
+    def filter(self, record):
+        is_winerror6 = False
+        if record.exc_info and "WinError 6" in str(record.exc_info[1]):
+            is_winerror6 = True
+        elif "WinError 6" in record.getMessage():
+            is_winerror6 = True
+            
+        if is_winerror6:
+            # Hijack the log record to print a clean message instead of a messy traceback
+            record.msg = "🔄 AI threads successfully shut down and disconnected."
+            record.args = ()
+            record.exc_info = None
+            record.levelname = "INFO"
+            record.levelno = logging.INFO
+        return True
+
+# Suppress messy internal tracebacks from RealtimeSTT when forcefully shutting down pipes on Windows
+logging.getLogger().addFilter(WinError6Filter())
+
 
 
 # GLOBAL SSL BYPASS FOR MULTIPROCESSING
