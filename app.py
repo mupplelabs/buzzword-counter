@@ -18,6 +18,12 @@ app = Flask(__name__)
 import os
 import sys
 
+# Force Windows Terminal to support UTF-8 (prevents UnicodeEncodeError on foreign languages)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure') and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure') and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # GLOBAL SSL BYPASS FOR MULTIPROCESSING
 # Windows spawns child processes that bypass the __main__ block.
 # We must evaluate insecure mode globally so child processes (like RealtimeSTT workers) inherit it.
