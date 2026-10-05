@@ -1072,7 +1072,16 @@ PRESENTATION_TEMPLATE = """
 def index():
     b_data = [{"original": word, "safe_id": make_safe_id(word)} for word in buzzwords_dict.keys()]
     try:
-        devices = list(enumerate(sr.Microphone.list_microphone_names()))
+        raw_devices = sr.Microphone.list_microphone_names()
+        devices = []
+        seen_names = set()
+        for idx, name in enumerate(raw_devices):
+            name_lower = name.lower()
+            if "output" in name_lower or "speaker" in name_lower:
+                continue
+            if name not in seen_names:
+                seen_names.add(name)
+                devices.append((idx, name.strip()))
     except Exception:
         devices = []
     return render_template_string(HTML_TEMPLATE, buzzwords_data=b_data, devices=devices, current_device=current_device_index, languages=WHISPER_LANGUAGES, current_language=current_language)
