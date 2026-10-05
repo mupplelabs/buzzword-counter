@@ -16,6 +16,42 @@ ssl._create_default_https_context = ssl._create_unverified_context
 app = Flask(__name__)
 
 import os
+import sys
+
+# GLOBAL SSL BYPASS FOR MULTIPROCESSING
+# Windows spawns child processes that bypass the __main__ block.
+# We must evaluate insecure mode globally so child processes (like RealtimeSTT workers) inherit it.
+global_insecure = "--insecure" in sys.argv
+if os.path.exists("config.json"):
+    try:
+        with open("config.json", "r") as f:
+            if json.load(f).get("insecure", False):
+                global_insecure = True
+    except:
+        pass
+
+if global_insecure:
+    import urllib3
+    import requests
+    import httpx
+    import warnings
+    
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+    
+    # Patch requests
+    old_req = requests.Session.request
+    def new_req(*args, **kwargs):
+        kwargs['verify'] = False
+        return old_req(*args, **kwargs)
+    requests.Session.request = new_req
+    
+    # Patch httpx
+    old_httpx = httpx.Client.__init__
+    def new_httpx(self, *args, **kwargs):
+        kwargs['verify'] = False
+        old_httpx(self, *args, **kwargs)
+    httpx.Client.__init__ = new_httpx
 
 BUZZWORDS_FILE = 'buzzwords.json'
 
@@ -1139,27 +1175,7 @@ if __name__ == '__main__':
     print(f"🚀 Starting Buzzword Counter with '{final_engine}' engine!")
     
     # 3. Apply SSL Bypasses if insecure mode is triggered
-    if use_insecure:
-        print("⚠️  Running in INSECURE mode: SSL certificate verification is disabled.")
-        import urllib3
-        import requests
-        import httpx
-        import warnings
-        
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-        
-        old_req = requests.Session.request
-        def new_req(*args, **kwargs):
-            kwargs['verify'] = False
-            return old_req(*args, **kwargs)
-        requests.Session.request = new_req
-        
-        old_httpx = httpx.Client.__init__
-        def new_httpx(self, *args, **kwargs):
-            kwargs['verify'] = False
-            old_httpx(self, *args, **kwargs)
-        httpx.Client.__init__ = new_httpx
+    pass
     
     if final_engine == "realtimestt":
         threading.Thread(target=realtimestt_audio_listener, daemon=True).start()
