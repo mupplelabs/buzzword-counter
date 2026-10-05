@@ -177,10 +177,15 @@ def classic_audio_listener():
                         continue
                     except (sr.UnknownValueError, sr.RequestError):
                         continue
-        except Exception as e:
-            print(f"⚠️ Microphone error: {e}")
+        except OSError as e:
+            print(f"⚠️ Microphone hardware error: {e}")
+            print("Retrying in 2 seconds...")
             import time
             time.sleep(2)
+        except Exception as e:
+            print(f"❌ FATAL ERROR in Classic Engine: {e}")
+            print("Shutting down server...")
+            os._exit(1)
 
 
 def realtimestt_audio_listener():
@@ -250,9 +255,16 @@ def realtimestt_audio_listener():
                     current_utterance_matches.clear()
                     
         except Exception as e:
-            print(f"⚠️ Microphone error: {e}")
-            import time
-            time.sleep(2)
+            error_msg = str(e).lower()
+            if "ssl" in error_msg or "connecterror" in error_msg or "cuda out of memory" in error_msg:
+                print(f"❌ FATAL ERROR in RealtimeSTT Engine: {e}")
+                print("Shutting down server...")
+                os._exit(1)
+            else:
+                print(f"⚠️ Microphone glitched: {e}")
+                print("Retrying in 2 seconds...")
+                import time
+                time.sleep(2)
         finally:
             global_recorder = None
 
