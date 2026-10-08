@@ -56,6 +56,7 @@ logging.getLogger().addFilter(WinError6Filter())
 # We must evaluate insecure mode globally so child processes (like RealtimeSTT workers) inherit it.
 global_insecure = "--insecure" in sys.argv
 global_verbose = "--verbose" in sys.argv
+global_log_transcript = "--log-transcript" in sys.argv
 if os.path.exists("config.json"):
     try:
         with open("config.json", "r") as f:
@@ -64,8 +65,47 @@ if os.path.exists("config.json"):
                 global_insecure = True
             if cfg.get("verbose", False):
                 global_verbose = True
+            if cfg.get("log_transcript", False):
+                global_log_transcript = True
     except:
         pass
+
+# Setup transcript logging
+TRANSCRIPTS_DIR = "transcripts"
+if global_log_transcript and not os.path.exists(TRANSCRIPTS_DIR):
+    os.makedirs(TRANSCRIPTS_DIR)
+
+def log_to_transcript(text_chunk):
+    if not global_log_transcript:
+        return
+    import datetime
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    filepath = os.path.join(TRANSCRIPTS_DIR, f"transcript_{today_str}.md")
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    with open(filepath, "a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {text_chunk}\n")
+
+# Setup stopwords
+STOPWORDS_FILE = "stopwords.txt"
+DEFAULT_STOPWORDS = {
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", 
+    "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", 
+    "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", 
+    "people", "into", "year", "your", "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think", "also",
+    "der", "die", "das", "und", "in", "den", "von", "zu", "dem", "mit", "für", "ist", "auf", "des", "eine", "ein", "sich", "nicht", "auch", "es",
+    "als", "an", "nach", "wie", "im", "bei", "werden", "aus", "sie", "oder", "um", "hat", "wir", "noch", "zur", "über", "daß", "so", "dann", "nur",
+    "war", "was", "wird", "sein", "dass", "kann", "haben", "mehr", "sind", "ich", "einen", "zum", "vor", "bis", "einem", "aber", "man", "durch", "wenn", "wieder",
+    "die", "der", "das", "ein", "eine", "ja", "nein", "oh", "hm", "äh", "okay", "ok"
+}
+if not os.path.exists(STOPWORDS_FILE):
+    with open(STOPWORDS_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(sorted(list(DEFAULT_STOPWORDS))))
+
+def get_stopwords():
+    if os.path.exists(STOPWORDS_FILE):
+        with open(STOPWORDS_FILE, "r", encoding="utf-8") as f:
+            return set(line.strip().lower() for line in f if line.strip())
+    return DEFAULT_STOPWORDS
 
 if global_insecure:
     import urllib3
@@ -224,6 +264,7 @@ def classic_audio_listener():
                             
                         if global_verbose:
                             print(f"Recognized: {text}")  
+                        log_to_transcript(text)
                         
                         # Ignore extreme repetition loops
                         if "very very very" in text:
@@ -335,6 +376,7 @@ def realtimestt_audio_listener():
                     if text:
                         if global_verbose:
                             print(f"Recognized: {text}")
+                        log_to_transcript(text)
                         process_text_chunk(text)
                     current_utterance_matches.clear()
                     
@@ -499,6 +541,7 @@ HTML_TEMPLATE = """
         }
         .menu-content.show { display: flex; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
 </head>
 <body>
 
@@ -545,6 +588,7 @@ HTML_TEMPLATE = """
             <button type="submit" class="btn" title="Reset All Counters to Zero" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🔄</button>
         </form>
         <button type="button" onclick="document.getElementById('confirmModal').style.display='flex'" class="btn" title="Remove All Buzzwords" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">🗑️</button>
+        <button type="button" onclick="openWordCloud()" class="btn" title="Generate Word Cloud" style="background-color: #34495e; border-color: #2c3e50; padding: 10px 15px; font-size: 20px;">☁️</button>
         <form method="POST" action="/add_word" style="display:flex; gap:10px;">
             <input type="text" name="word" placeholder="Add a new buzzword..." required>
             <button type="submit" class="btn">➕ Add</button>
@@ -700,7 +744,49 @@ HTML_TEMPLATE = """
             window.open("/totals?title=" + encodeURIComponent(title), "_blank");
         }
     </script>
-    <div id="confirmModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+
+    <!-- Word Cloud Modal -->
+    <div id="cloudModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; justify-content:center; align-items:center; flex-direction:column;">
+        <h2 style="color:#e67e22; margin-bottom: 20px;">☁️ Today's Transcript Word Cloud</h2>
+        <div style="background: white; border-radius: 8px; padding: 10px;">
+            <canvas id="cloudCanvas" width="800" height="500"></canvas>
+        </div>
+        <button type="button" onclick="document.getElementById('cloudModal').style.display='none'" class="btn" style="margin-top:20px; background:#e74c3c; border-color:#c0392b;">Close</button>
+        <div id="cloudLoading" style="color:white; margin-top:10px; display:none;">Generating cloud...</div>
+    </div>
+
+    <script>
+        function openWordCloud() {
+            document.getElementById('cloudModal').style.display='flex';
+            document.getElementById('cloudLoading').style.display='block';
+            fetch('/api/wordcloud')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('cloudLoading').style.display='none';
+                    if (data.length === 0) {
+                        alert("No transcript data available for today. Please speak to the microphone first with --log-transcript enabled.");
+                        document.getElementById('cloudModal').style.display='none';
+                        return;
+                    }
+                    WordCloud(document.getElementById('cloudCanvas'), { 
+                        list: data,
+                        fontFamily: 'Courier New, monospace',
+                        weightFactor: function (size) {
+                            return Math.pow(size, 0.5) * 15; // Scale down massively so huge words fit
+                        },
+                        color: 'random-dark',
+                        backgroundColor: '#ffffff',
+                        rotateRatio: 0.5
+                    });
+                })
+                .catch(e => {
+                    document.getElementById('cloudLoading').style.display='none';
+                    alert("Error generating word cloud: " + e);
+                });
+        }
+    </script>
+
+        <div id="confirmModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
         <div style="background:#2c3e50; padding:30px; border-radius:12px; border:4px solid #34495e; text-align:center; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.7);">
             <h2 style="margin-top:0; color:#f39c12;">Are you sure?</h2>
             <p style="font-size:18px; margin-bottom:25px;">You are about to completely delete all buzzwords from the list. This cannot be undone.</p>
@@ -739,6 +825,7 @@ EMBED_TEMPLATE = """
             height: 40px; line-height: 40px; text-align: center; font-size: 28px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); font-family: 'Courier New', Courier, monospace;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
 </head>
 <body>
     <div class="odometer" id="odo-{{ safe_id }}">
@@ -838,6 +925,7 @@ TOTALS_TEMPLATE = """
             height: 70px; line-height: 70px; text-align: center; font-size: 48px; font-weight: bold; color: #fff; text-shadow: 0 3px 6px rgba(0,0,0,0.8);
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
 </head>
 <body>
     <h1>{{ title }}</h1>
@@ -976,6 +1064,7 @@ PRESENTATION_TEMPLATE = """
             height: 50px; line-height: 50px; text-align: center; font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
 </head>
 <body>
     <h1>{{ title }}</h1>
@@ -1184,6 +1273,39 @@ def totals():
 def embed_total():
     return render_template_string(EMBED_TEMPLATE, word="__TOTAL__", safe_id="total")
 
+import collections
+
+@app.route('/api/wordcloud')
+def get_wordcloud_data():
+    import datetime
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    filepath = os.path.join(TRANSCRIPTS_DIR, f"transcript_{today_str}.md")
+    
+    if not os.path.exists(filepath):
+        return json.dumps([])
+        
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+        
+    # Remove timestamps like [15:32:01]
+    content = re.sub(r'\[\d{2}:\d{2}:\d{2}\]', '', content)
+    
+    # Strip punctuation and lowercase
+    import string
+    content = content.lower().translate(str.maketrans('', '', string.punctuation))
+    
+    words = content.split()
+    stopwords = get_stopwords()
+    
+    filtered_words = [w for w in words if w not in stopwords and len(w) > 2]
+    
+    # Count frequencies
+    counter = collections.Counter(filtered_words)
+    top_words = counter.most_common(50)
+    
+    # Format for wordcloud2.js (array of [word, weight])
+    return json.dumps([[word, count] for word, count in top_words])
+
 @app.route('/stream')
 def stream():
     """Streams data updates to the client using Server-Sent Events (SSE)."""
@@ -1210,6 +1332,7 @@ if __name__ == '__main__':
     parser.add_argument("--engine", choices=["classic", "realtimestt"], help="Audio engine to use")
     parser.add_argument("--insecure", action="store_true", help="Disable SSL certificate verification for corporate proxies")
     parser.add_argument("--verbose", action="store_true", help="Print real-time transcriptions to the terminal")
+    parser.add_argument("--log-transcript", action="store_true", help="Log transcriptions to a markdown file")
     args = parser.parse_args()
     
     # 1. Config file
