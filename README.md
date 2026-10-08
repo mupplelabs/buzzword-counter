@@ -26,6 +26,10 @@ Powered locally by **faster-whisper** for ultra-fast, offline, bilingual (Englis
 - **Presentation & Totals Mode:** Clean, scaled-up, full-screen dashboards designed for projectors. Features a "Totals Mode" that continuously aggregates all buzzwords into one master odometer. You can customize the title via the Settings menu.
 - **Individual Embeds:** Get transparent, borderless iframe links for individual odometers to embed directly into PowerPoint Web Viewer or OBS Studio.
 - **Smart Phonetic Aliasing:** Secretly corrects Whisper's common misspellings for short acronyms (e.g., mapping "k.e." to "KI").
+- **Meeting Minutes Auto-Logger:** Automatically stream your entire presentation's transcript directly to a persistent Markdown file in a `transcripts/` vault.
+- **Dynamic Word Cloud Generator:** Parse your live transcript on the fly and generate a beautiful, fully-randomized Canvas Word Cloud directly in the UI dashboard at the end of your presentation.
+- **Configurable Stopwords Filter:** Automatically filters out over 100 common English/German filler words from the Word Cloud, fully customizable via `stopwords.txt`.
+- **Silent Mode Execution:** By default, the app suppresses verbose AI transcriptions in your terminal to keep your logs perfectly clean, only exposing critical routing information (overrideable via the `--verbose` flag).
 - **Strict Regex Word Boundaries:** Prevents false-positives when short acronyms are buried inside larger words (e.g., "AI" won't trigger if you say "again").
 - **Dual-Engine Architecture:** Choose between the ultra-lightweight original engine, or the blazing fast `RealtimeSTT` VAD streaming engine using command-line arguments.
 - **"Denglish" Support:** Optimized to flawlessly transcribe German sentences peppered with English IT terms without aggressively translating them.
@@ -75,8 +79,11 @@ python app.py --engine realtimestt
 ```bash
 # Launch behind a strict corporate MITM proxy (disables SSL validation)
 python app.py --engine realtimestt --insecure
+
+# Launch with Meeting Minutes auto-logging enabled and force transcript text back into the terminal
+python app.py --engine realtimestt --log-transcript --verbose
 ```
-*(Tip: You can permanently configure these flags by creating a `config.json` file in the root folder with `{"engine": "realtimestt", "insecure": true, "language": "de"}`!)*
+*(Tip: You can permanently configure these flags by creating a `config.json` file in the root folder with `{"engine": "realtimestt", "insecure": true, "log_transcript": true, "verbose": false}`!)*
 *(Note: The very first time you run this, it will take a minute or two to download the Whisper AI model to your computer).*
 
 2. **Calibrate:**
