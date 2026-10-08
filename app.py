@@ -55,11 +55,15 @@ logging.getLogger().addFilter(WinError6Filter())
 # Windows spawns child processes that bypass the __main__ block.
 # We must evaluate insecure mode globally so child processes (like RealtimeSTT workers) inherit it.
 global_insecure = "--insecure" in sys.argv
+global_verbose = "--verbose" in sys.argv
 if os.path.exists("config.json"):
     try:
         with open("config.json", "r") as f:
-            if json.load(f).get("insecure", False):
+            cfg = json.load(f)
+            if cfg.get("insecure", False):
                 global_insecure = True
+            if cfg.get("verbose", False):
+                global_verbose = True
     except:
         pass
 
@@ -218,7 +222,8 @@ def classic_audio_listener():
                                 condition_on_previous_text=False
                             ).lower()
                             
-                        print(f"Recognized: {text}")  
+                        if global_verbose:
+                            print(f"Recognized: {text}")  
                         
                         # Ignore extreme repetition loops
                         if "very very very" in text:
@@ -328,7 +333,8 @@ def realtimestt_audio_listener():
                 while not device_changed:
                     text = recorder.text()
                     if text:
-                        print(f"Recognized: {text}")
+                        if global_verbose:
+                            print(f"Recognized: {text}")
                         process_text_chunk(text)
                     current_utterance_matches.clear()
                     
@@ -1203,6 +1209,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Buzzword Counter")
     parser.add_argument("--engine", choices=["classic", "realtimestt"], help="Audio engine to use")
     parser.add_argument("--insecure", action="store_true", help="Disable SSL certificate verification for corporate proxies")
+    parser.add_argument("--verbose", action="store_true", help="Print real-time transcriptions to the terminal")
     args = parser.parse_args()
     
     # 1. Config file
